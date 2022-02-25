@@ -4,13 +4,13 @@
 Main.cs
 ```cs
 public class Main
+{
+    public static void Load(UnityModManager.ModEntry modEntry)
     {
-        public static void Load(UnityModManager.ModEntry modEntry)
-        {
-            //Setup All Tweaks in Current Mod Assembly.
-            Tweak.Setup(modEntry);
-        }
+        //Setup All Tweaks in Current Mod Assembly.
+        Tweak.Setup(modEntry);
     }
+}
 ```
 
 TestTweaks.cs
