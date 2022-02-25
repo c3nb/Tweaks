@@ -57,3 +57,5 @@ https://github.com/PizzaLovers007/AdofaiTweaks/blob/master/AdofaiTweaks/Core/Twe
 https://github.com/PizzaLovers007/AdofaiTweaks/blob/master/AdofaiTweaks/Core/TweakRunner.cs
 https://github.com/PizzaLovers007/AdofaiTweaks/blob/master/AdofaiTweaks/Core/TweakSettings.cs
 https://github.com/PizzaLovers007/AdofaiTweaks/blob/master/AdofaiTweaks/Core/SettingsSynchronizer.cs
+https://github.com/PizzaLovers007/AdofaiTweaks/blob/master/AdofaiTweaks/Core/Attributes/RegisterTweakAttribute.cs
+https://github.com/PizzaLovers007/AdofaiTweaks/blob/master/AdofaiTweaks/Core/Attributes/SyncTweakSettingsAttribute.cs
