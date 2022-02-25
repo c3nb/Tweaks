@@ -1,6 +1,6 @@
 # Tweaks
 
-## 예시 / example
+## 예시
 Main.cs
 ```cs
 public class Main
@@ -50,4 +50,5 @@ public class TTPatches
     //Any patches..
 }
 ```
-
+## 결과
+![Result](Result.png)
