@@ -19,7 +19,7 @@ TestTweaks.cs
 public class TestTweak : Tweak
 {
     [SyncSettings] //Sync TweakSettings
-    public TTSettings Settings { get; set; }
+    public static TTSettings Settings { get; set; }
     public override void OnEnable()
     {
         Logger.Log("Nice");
