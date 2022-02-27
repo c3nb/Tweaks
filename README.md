@@ -8,7 +8,7 @@ public class Main
     public static void Load(UnityModManager.ModEntry modEntry)
     {
         //Setup All Tweaks in Current Mod Assembly.
-        Tweak.Setup(modEntry);
+        Runner.Run(modEntry);
     }
 }
 ```
@@ -20,34 +20,36 @@ public class TestTweak : Tweak
 {
     [SyncSettings] //Sync TweakSettings
     public static TTSettings Settings { get; set; }
+    [SyncTweak] //Sync Tweak
+    public static TestTweak TT { get; set; }
     public override void OnEnable()
     {
-        Logger.Log("Nice");
+        Log("Nice");
     }
     public override void OnDisable()
     {
-        Logger.Log("Nice");
+        Log("Nice");
     }
     public override void OnGUI()
     {
-        GUILayout.Label("Nice");
+        GUIL.L("Nice");
     }
     public override void OnHideGUI()
     {
-        Logger.Log("Nice");
+        Log("Nice");
     }
     public override void OnUpdate()
     {
         //TODO
     }
 }
-public class TTSettings : Tweak.Settings
+public static class TTPatches
 {
-    //Any settings..
+    //Patches
 }
-public class TTPatches
+public class TTSettings : TweakSettings
 {
-    //Any patches..
+    //Settings
 }
 ```
 ## 결과
