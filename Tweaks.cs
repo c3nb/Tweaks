@@ -130,6 +130,7 @@ namespace Tweaks
             => SyncSettings.Save(Tweak.TweakEntry);
         public static void RegisterTweak(Type tweakType, bool last = true)
         {
+            if (!tweakType.IsSubclassOf(typeof(Tweak))) return;
             if (!TweakTypes.Contains(tweakType)) TweakTypes.Add(tweakType);
             ConstructorInfo constructor = tweakType.GetConstructor(new Type[] { });
             Tweak tweak = (Tweak)constructor.Invoke(null);
