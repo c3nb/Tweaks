@@ -28,23 +28,7 @@ namespace Tweaks
         public virtual void OnDisable() { }
         public virtual void OnUpdate() { }
         public virtual void OnHideGUI() { }
-        public virtual string Name { get; }
-        public virtual string Description { get; }
-        public virtual Type PatchesType { get; }
-        public virtual Type SettingsType { get; }
-        internal TweakAttribute Metadata
-        {
-            get
-            {
-                if (string.IsNullOrEmpty(Name))
-                    return null;
-                var attr = new TweakAttribute(Name, Description);
-                attr.PatchesType = PatchesType;
-                attr.SettingsType = SettingsType;
-                return attr;
-            }
-        }
-        internal TweakRunner Runner { get; set; }
+        private TweakRunner Runner { get; set; }
     }
     public class TweakSettings : ModSettings
     {
@@ -74,18 +58,20 @@ namespace Tweaks
     {
         static Runner()
         {
-            onHarmony = new Harmony("onHarmony");
+            OnHarmony = new Harmony("onHarmony");
             Runners = new List<TweakRunner>();
             OT = typeof(Runner).GetMethod(nameof(Runner.OnToggle), (BindingFlags)15420);
             OG = typeof(Runner).GetMethod(nameof(Runner.OnGUI), (BindingFlags)15420);
             OS = typeof(Runner).GetMethod(nameof(Runner.OnSaveGUI), (BindingFlags)15420);
             OH = typeof(Runner).GetMethod(nameof(Runner.OnHideGUI), (BindingFlags)15420);
+            R = typeof(Tweak).GetProperty("Runner", (BindingFlags)15420);
         }
-        private static MethodInfo OT;
-        private static MethodInfo OG;
-        private static MethodInfo OS;
-        private static MethodInfo OH;
-        private static Harmony onHarmony { get; }
+        private static readonly MethodInfo OT;
+        private static readonly MethodInfo OG;
+        private static readonly MethodInfo OS;
+        private static readonly MethodInfo OH;
+        private static readonly PropertyInfo R;
+        private static Harmony OnHarmony { get; }
         public static void Run(ModEntry modEntry, bool preGUI = false)
         {
             Tweak.TweakEntry = modEntry;
@@ -93,21 +79,21 @@ namespace Tweaks
             TweakTypes = modEntry.Assembly.GetTypes().Where(t => t.IsSubclassOf(typeof(Tweak))).ToList();
             if (modEntry.OnToggle == null)
                 modEntry.OnToggle = (m, v) => OnToggle(v);
-            else onHarmony.Patch(modEntry.OnToggle.Method, postfix: new HarmonyMethod(OT));
+            else OnHarmony.Patch(modEntry.OnToggle.Method, postfix: new HarmonyMethod(OT));
             if (modEntry.OnGUI == null)
                 modEntry.OnGUI = (m) => OnGUI();
             else
             {
                 if (preGUI)
-                    onHarmony.Patch(modEntry.OnGUI.Method, new HarmonyMethod(OG));
-                else onHarmony.Patch(modEntry.OnGUI.Method, postfix: new HarmonyMethod(OG));
+                    OnHarmony.Patch(modEntry.OnGUI.Method, new HarmonyMethod(OG));
+                else OnHarmony.Patch(modEntry.OnGUI.Method, postfix: new HarmonyMethod(OG));
             }
             if (modEntry.OnHideGUI == null)
                 modEntry.OnHideGUI = (m) => OnHideGUI();
-            else onHarmony.Patch(modEntry.OnHideGUI.Method, postfix: new HarmonyMethod(OH));
+            else OnHarmony.Patch(modEntry.OnHideGUI.Method, postfix: new HarmonyMethod(OH));
             if (modEntry.OnSaveGUI == null)
                 modEntry.OnSaveGUI = (m) => OnSaveGUI();
-            else onHarmony.Patch(modEntry.OnSaveGUI.Method, postfix: new HarmonyMethod(OS));
+            else OnHarmony.Patch(modEntry.OnSaveGUI.Method, postfix: new HarmonyMethod(OS));
         }
         private static List<Type> TweakTypes { get; set; }
         private static List<TweakRunner> Runners { get; set; }
@@ -147,9 +133,9 @@ namespace Tweaks
             if (!TweakTypes.Contains(tweakType)) TweakTypes.Add(tweakType);
             ConstructorInfo constructor = tweakType.GetConstructor(new Type[] { });
             Tweak tweak = (Tweak)constructor.Invoke(null);
-            TweakAttribute attr = tweakType.GetCustomAttribute<TweakAttribute>() ?? tweak.Metadata;
+            TweakAttribute attr = tweakType.GetCustomAttribute<TweakAttribute>();
             if (attr == null)
-                throw new InvalidOperationException("Invalid Tweak Metadata!");
+                throw new NullReferenceException("Cannot Find Tweak Metadata! (TweakAttribute)");
             TweakSettings settings;
             if (attr.SettingsType != null && SyncSettings.Settings.TryGetValue(attr.SettingsType, out TweakSettings setting))
                 settings = setting;
@@ -158,7 +144,7 @@ namespace Tweaks
             if (Runners.Any())
                 Runners.Last().Last = false;
             Runners.Add(runner);
-            tweak.Runner = runner;
+            R.SetValue(tweak, runner);
             SyncSettings.Sync(tweak);
             SyncTweak.Sync(tweak);
         }
@@ -517,8 +503,6 @@ namespace Tweaks
             TweakAttribute attr = tType.GetCustomAttribute<TweakAttribute>();
             if (attr != null && attr.PatchesType != null)
                 Sync(attr.PatchesType);
-            else if (tweak.PatchesType != null)
-                Sync(tweak.PatchesType);
         }
         public static void Save(ModEntry modEntry)
         {
@@ -550,8 +534,6 @@ namespace Tweaks
             TweakAttribute attr = tType.GetCustomAttribute<TweakAttribute>();
             if (attr != null && attr.PatchesType != null)
                 Sync(attr.PatchesType);
-            else if (tweak.PatchesType != null)
-                Sync(tweak.PatchesType);
         }
     }
     [AttributeUsage(AttributeTargets.Method, AllowMultiple = true, Inherited = true)]
