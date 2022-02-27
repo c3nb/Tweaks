@@ -20,7 +20,7 @@ namespace Tweaks
         public static Dictionary<Type, Tweak> Tweaks { get; }
         public static ModEntry TweakEntry { get; internal set; }
         public void Log(object obj)
-            => TweakEntry?.Logger.Log($"[{Runner.Metadata.Name}] {obj}");
+            => TweakEntry.Logger.Log($"[{Runner.Metadata.Name}] {obj}");
         public virtual void OnGUI() { }
         public virtual void OnPatch() { }
         public virtual void OnUnpatch() { }
