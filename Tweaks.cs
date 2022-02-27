@@ -324,6 +324,11 @@ namespace Tweaks
         public void Enable()
         {
             Tweak.OnEnable();
+            if (Metadata.PatchesType != null)
+                foreach (Type type in GetNestedTypes(Metadata.PatchesType))
+                    Harmony.CreateClassProcessor(type).Patch();
+            foreach (Type type in GetNestedTypes(Tweak.GetType()))
+                Harmony.CreateClassProcessor(type).Patch();
             foreach (var patch in Patches)
             {
                 if (patch.Prefix)
@@ -334,7 +339,6 @@ namespace Tweaks
         }
         public void Disable()
         {
-            if (!Settings.IsEnabled) return;
             Tweak.OnDisable();
             Harmony.UnpatchAll(Harmony.Id);
             Tweak.OnUnpatch();
