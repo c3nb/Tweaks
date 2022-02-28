@@ -42,6 +42,18 @@ public class TestTweak : Tweak
     {
         //TODO
     }
+    [Tweak("InnerTweak", "Only TestInner", Priority = 0)]
+    public class InnerTweak : TestTweak
+    {
+        public override void OnEnable()
+        {
+            Log("NiceInner");
+        }
+        public override void OnGUI()
+        {
+            SGL.L("NiceInner");
+        }
+    }
 }
 public static class TTPatches
 {
