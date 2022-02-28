@@ -66,18 +66,22 @@ namespace Tweaks
     {
         static Runner()
         {
+            Types = new List<Type>();
             OnHarmony = new Harmony("onHarmony");
             Runners = new List<TweakRunner>();
+            RunnersDict = new Dictionary<Type, TweakRunner>();
             OT = typeof(Runner).GetMethod(nameof(Runner.OnToggle), (BindingFlags)15420);
             OG = typeof(Runner).GetMethod(nameof(Runner.OnGUI), (BindingFlags)15420);
             OS = typeof(Runner).GetMethod(nameof(Runner.OnSaveGUI), (BindingFlags)15420);
             OH = typeof(Runner).GetMethod(nameof(Runner.OnHideGUI), (BindingFlags)15420);
+            OU = typeof(Runner).GetMethod(nameof(Runner.OnUpdate), (BindingFlags)15420);
             R = typeof(Tweak).GetProperty("Runner", (BindingFlags)15420);
         }
         private static readonly MethodInfo OT;
         private static readonly MethodInfo OG;
         private static readonly MethodInfo OS;
         private static readonly MethodInfo OH;
+        private static readonly MethodInfo OU;
         private static readonly PropertyInfo R;
         private static Harmony OnHarmony { get; }
         public static void Run(ModEntry modEntry, bool preGUI = false)
@@ -102,14 +106,18 @@ namespace Tweaks
             if (modEntry.OnSaveGUI == null)
                 modEntry.OnSaveGUI = (m) => OnSaveGUI();
             else OnHarmony.Patch(modEntry.OnSaveGUI.Method, postfix: new HarmonyMethod(OS));
+            if (modEntry.OnUpdate == null)
+                modEntry.OnUpdate = (m, dt) => OnUpdate();
+            else OnHarmony.Patch(modEntry.OnUpdate.Method, postfix: new HarmonyMethod(OU));
         }
         private static List<Type> TweakTypes { get; set; }
-        private static List<TweakRunner> Runners { get; set; }
+        private static Dictionary<Type, TweakRunner> RunnersDict { get; }
+        private static List<TweakRunner> Runners { get; }
+        private static List<Type> Types { get; }
         private static void Start()
         {
-            var last = TweakTypes.Last();
             foreach (Type tweakType in TweakTypes.OrderBy(t => t.GetCustomAttribute<TweakAttribute>().Name).OrderBy(t => t.GetCustomAttribute<TweakAttribute>().Priority))
-                RegisterTweak(tweakType, tweakType == last);
+                RegisterTweak(tweakType);
             Runners.ForEach(runner => runner.Start());
         }
         private static void Stop()
@@ -136,26 +144,45 @@ namespace Tweaks
         }
         private static void OnSaveGUI()
             => SyncSettings.Save(Tweak.TweakEntry);
-        public static void RegisterTweak(Type tweakType, bool last = true)
+        private static void OnUpdate()
         {
-            if (!tweakType.IsSubclassOf(typeof(Tweak))) return;
-            if (!TweakTypes.Contains(tweakType)) TweakTypes.Add(tweakType);
-            ConstructorInfo constructor = tweakType.GetConstructor(new Type[] { });
-            Tweak tweak = (Tweak)constructor.Invoke(null);
-            TweakAttribute attr = tweakType.GetCustomAttribute<TweakAttribute>();
-            if (attr == null)
-                throw new NullReferenceException("Cannot Find Tweak Metadata! (TweakAttribute)");
-            TweakSettings settings;
-            if (attr.SettingsType != null && SyncSettings.Settings.TryGetValue(attr.SettingsType, out TweakSettings setting))
-                settings = setting;
-            else settings = new TweakSettings();
-            TweakRunner runner = new TweakRunner(tweak, settings, last);
-            if (Runners.Any())
-                Runners.Last().Last = false;
-            Runners.Add(runner);
-            R.SetValue(tweak, runner);
-            SyncSettings.Sync(tweak);
-            SyncTweak.Sync(tweak);
+            foreach (TweakRunner runner in Runners)
+                runner.OnUpdate();
+        }
+        public static void RegisterTweak(Type tweakType, Type outerType = null)
+        {
+            Tweak.TweakEntry.Logger.Log(tweakType.ToString());
+            try
+            {
+                if (tweakType.BaseType != typeof(Tweak) && outerType == null) return;
+                if (!TweakTypes.Contains(tweakType)) TweakTypes.Add(tweakType);
+                if (Types.Contains(tweakType)) return;
+                ConstructorInfo constructor = tweakType.GetConstructor(new Type[] { });
+                Tweak tweak = (Tweak)constructor.Invoke(null);
+                TweakSettings settings;
+                TweakAttribute attr = tweakType.GetCustomAttribute<TweakAttribute>();
+                if (attr == null)
+                    throw new NullReferenceException("Cannot Find Tweak Metadata! (TweakAttribute)");
+                if (!(attr.SettingsType != null && SyncSettings.Settings.TryGetValue(attr.SettingsType, out settings)))
+                    settings = new TweakSettings();
+                TweakRunner runner = new TweakRunner(tweak, settings);
+                RunnersDict[tweakType] = runner;
+                if (outerType != null && RunnersDict.TryGetValue(outerType, out var outerRunner))
+                    outerRunner.InnerTweaks.Add(runner);
+                foreach (Type type in tweakType.GetNestedTypes((BindingFlags)15420).Where(t => t.IsSubclassOf(typeof(Tweak))))
+                    RegisterTweak(type, tweakType);
+                R.SetValue(tweak, runner);
+                if (outerType == null)
+                    Runners.Add(runner);
+                SyncSettings.Sync(tweak);
+                SyncTweak.Sync(tweak);
+                Types.Add(tweakType);
+            }
+            catch (Exception e)
+            {
+                Tweak.TweakEntry.Logger.Log(tweakType.ToString());
+                throw e;
+            }
         }
         public static void UnregisterTweak(Type tweakType)
         {
@@ -300,13 +327,16 @@ namespace Tweaks
         public static GUIStyle Descr;
         public static bool StyleInitialized = false;
         public Tweak Tweak { get; }
+        public TweakRunner OuterTweak { get; }
+        public List<TweakRunner> InnerTweaks { get; }
         public TweakAttribute Metadata { get; }
         public TweakSettings Settings { get; }
         public List<TweakPatch> Patches { get; }
         public Harmony Harmony { get; }
-        public bool Last { get; internal set; }
-        public TweakRunner(Tweak tweak, TweakSettings settings, bool last) : this(tweak, tweak.GetType().GetCustomAttribute<TweakAttribute>(), settings, last) { }
-        public TweakRunner(Tweak tweak, TweakAttribute attr, TweakSettings settings, bool last)
+        public bool Inner { get; }
+        public int Count { get; }
+        public TweakRunner(Tweak tweak, TweakSettings settings, TweakRunner outerTweak = null, int count = 0) : this(tweak, tweak.GetType().GetCustomAttribute<TweakAttribute>(), settings, outerTweak, count) { }
+        public TweakRunner(Tweak tweak, TweakAttribute attr, TweakSettings settings, TweakRunner outerTweak = null, int count = 0)
         {
             Type tweakType = tweak.GetType();
             Tweak = tweak;
@@ -314,12 +344,15 @@ namespace Tweaks
             Settings = settings;
             Patches = new List<TweakPatch>();
             Harmony = new Harmony($"Tweaks.{Metadata.Name}");
+            InnerTweaks = new List<TweakRunner>();
+            OuterTweak = outerTweak;
+            Inner = outerTweak != null;
+            Count = count;
             if (Metadata.PatchesType != null)
                 AddPatches(Metadata.PatchesType);
             AddPatches(tweakType);
             Patches = Patches.OrderBy(t => t.Priority).ToList();
             Tweak.Tweaks.Add(tweakType, tweak);
-            Last = last;
         }
         public void Start()
         {
@@ -400,13 +433,14 @@ namespace Tweaks
             if (Settings.IsExpanded && Settings.IsEnabled)
             {
                 GUILayout.BeginHorizontal();
-                GUILayout.Space(24f);
+                GUILayout.Space(Inner ? (Count + 1) * 24f : 24f);
                 GUILayout.BeginVertical();
                 Tweak.OnGUI();
+                foreach (var runner in InnerTweaks)
+                    runner.OnGUI();
                 GUILayout.EndVertical();
                 GUILayout.EndHorizontal();
-                if (!Last)
-                    GUILayout.Space(12f);
+                GUILayout.Space(12f);
             }
         }
         public void OnUpdate()
