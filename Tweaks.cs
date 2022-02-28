@@ -665,7 +665,6 @@ namespace Tweaks
                 else Harmony.Patch(patch.Target, postfix: new HarmonyMethod(patch.Patch));
             }
             Tweak.OnPatch();
-            InnerTweaks.ForEach(runner => runner.Enable());
         }
         public void Disable()
         {
