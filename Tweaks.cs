@@ -21,6 +21,14 @@ namespace Tweaks
         public static ModEntry TweakEntry { get; internal set; }
         public void Log(object obj)
             => TweakEntry.Logger.Log($"[{Runner.Metadata.Name}] {obj}");
+        public void Enable()
+        {
+            Runner.Enable();
+        }
+        public void Disable()
+        {
+            Runner.Disable();
+        }
         public virtual void OnGUI() { }
         public virtual void OnPatch() { }
         public virtual void OnUnpatch() { }
@@ -156,7 +164,8 @@ namespace Tweaks
             Runners.Remove(runner);
         }
     }
-    public static class GUIL
+    //SimpleGUILayout
+    public static class SGL
     {
         public static void BI(float indentSize = 20f)
         {
@@ -456,91 +465,6 @@ namespace Tweaks
     }
     #endregion
     #region Attributes
-    [AttributeUsage(AttributeTargets.Class)]
-    public class TweakAttribute : Attribute
-    {
-        public TweakAttribute(string name, string desc = "")
-        {
-            Name = name;
-            Description = desc;
-        }
-        public string Name { get; }
-        public string Description { get; }
-        public Type PatchesType { get; set; }
-        public Type SettingsType { get; set; }
-    }
-    public class SyncSettings : Attribute
-    {
-        public static Dictionary<Type, TweakSettings> Settings = new Dictionary<Type, TweakSettings>();
-        public static void Load(ModEntry modEntry)
-        {
-            foreach (var type in modEntry.Assembly.GetTypes())
-            {
-                if (!type.IsSubclassOf(typeof(TweakSettings))) continue;
-                Register(modEntry, type);
-            }
-        }
-        public static void Register(ModEntry modEntry, Type settingsType)
-        {
-            MethodInfo load = typeof(ModSettings).GetMethod(nameof(ModSettings.Load), (BindingFlags)15420, null, new Type[] { typeof(ModEntry) }, null);
-            try { Settings[settingsType] = (TweakSettings)load.MakeGenericMethod(settingsType).Invoke(null, new object[] { modEntry }); }
-            catch { Settings[settingsType] = (TweakSettings)Activator.CreateInstance(settingsType); }
-        }
-        public static void Sync(Tweak tweak)
-        {
-            void Sync(Type type)
-            {
-                foreach (var field in type.GetFields((BindingFlags)15420))
-                {
-                    SyncSettings sync = field.GetCustomAttribute<SyncSettings>();
-                    if (sync != null)
-                        field.SetValue(tweak, Settings[field.FieldType]);
-                }
-                foreach (var prop in type.GetProperties((BindingFlags)15420))
-                {
-                    SyncSettings sync = prop.GetCustomAttribute<SyncSettings>();
-                    if (sync != null)
-                        prop.SetValue(tweak, Settings[prop.PropertyType]);
-                }
-            }
-            Type tType;
-            Sync(tType = tweak.GetType());
-            TweakAttribute attr = tType.GetCustomAttribute<TweakAttribute>();
-            if (attr != null && attr.PatchesType != null)
-                Sync(attr.PatchesType);
-        }
-        public static void Save(ModEntry modEntry)
-        {
-            foreach (var setting in Settings.Values)
-                setting.Save(modEntry);
-        }
-    }
-    public class SyncTweak : Attribute
-    {
-        public static void Sync(Tweak tweak)
-        {
-            void Sync(Type type)
-            {
-                foreach (var field in type.GetFields((BindingFlags)15420))
-                {
-                    SyncTweak sync = field.GetCustomAttribute<SyncTweak>();
-                    if (sync != null)
-                        field.SetValue(tweak, Tweak.Tweaks[field.FieldType]);
-                }
-                foreach (var prop in type.GetProperties((BindingFlags)15420))
-                {
-                    SyncTweak sync = prop.GetCustomAttribute<SyncTweak>();
-                    if (sync != null)
-                        prop.SetValue(tweak, Tweak.Tweaks[prop.PropertyType]);
-                }
-            }
-            Type tType;
-            Sync(tType = tweak.GetType());
-            TweakAttribute attr = tType.GetCustomAttribute<TweakAttribute>();
-            if (attr != null && attr.PatchesType != null)
-                Sync(attr.PatchesType);
-        }
-    }
     [AttributeUsage(AttributeTargets.Method, AllowMultiple = true, Inherited = true)]
     public class TweakPatch : Attribute
     {
@@ -643,6 +567,91 @@ namespace Tweaks
             if (result == null && throwOnNull)
                 throw new NullReferenceException($"Cannot Find Method! ({method})");
             return result;
+        }
+    }
+    [AttributeUsage(AttributeTargets.Class)]
+    public class TweakAttribute : Attribute
+    {
+        public TweakAttribute(string name, string desc = "")
+        {
+            Name = name;
+            Description = desc;
+        }
+        public string Name { get; }
+        public string Description { get; }
+        public Type PatchesType { get; set; }
+        public Type SettingsType { get; set; }
+    }
+    public class SyncSettings : Attribute
+    {
+        public static Dictionary<Type, TweakSettings> Settings = new Dictionary<Type, TweakSettings>();
+        public static void Load(ModEntry modEntry)
+        {
+            foreach (var type in modEntry.Assembly.GetTypes())
+            {
+                if (!type.IsSubclassOf(typeof(TweakSettings))) continue;
+                Register(modEntry, type);
+            }
+        }
+        public static void Register(ModEntry modEntry, Type settingsType)
+        {
+            MethodInfo load = typeof(ModSettings).GetMethod(nameof(ModSettings.Load), (BindingFlags)15420, null, new Type[] { typeof(ModEntry) }, null);
+            try { Settings[settingsType] = (TweakSettings)load.MakeGenericMethod(settingsType).Invoke(null, new object[] { modEntry }); }
+            catch { Settings[settingsType] = (TweakSettings)Activator.CreateInstance(settingsType); }
+        }
+        public static void Sync(Tweak tweak)
+        {
+            void Sync(Type type)
+            {
+                foreach (var field in type.GetFields((BindingFlags)15420))
+                {
+                    SyncSettings sync = field.GetCustomAttribute<SyncSettings>();
+                    if (sync != null)
+                        field.SetValue(tweak, Settings[field.FieldType]);
+                }
+                foreach (var prop in type.GetProperties((BindingFlags)15420))
+                {
+                    SyncSettings sync = prop.GetCustomAttribute<SyncSettings>();
+                    if (sync != null)
+                        prop.SetValue(tweak, Settings[prop.PropertyType]);
+                }
+            }
+            Type tType;
+            Sync(tType = tweak.GetType());
+            TweakAttribute attr = tType.GetCustomAttribute<TweakAttribute>();
+            if (attr != null && attr.PatchesType != null)
+                Sync(attr.PatchesType);
+        }
+        public static void Save(ModEntry modEntry)
+        {
+            foreach (var setting in Settings.Values)
+                setting.Save(modEntry);
+        }
+    }
+    public class SyncTweak : Attribute
+    {
+        public static void Sync(Tweak tweak)
+        {
+            void Sync(Type type)
+            {
+                foreach (var field in type.GetFields((BindingFlags)15420))
+                {
+                    SyncTweak sync = field.GetCustomAttribute<SyncTweak>();
+                    if (sync != null)
+                        field.SetValue(tweak, Tweak.Tweaks[field.FieldType]);
+                }
+                foreach (var prop in type.GetProperties((BindingFlags)15420))
+                {
+                    SyncTweak sync = prop.GetCustomAttribute<SyncTweak>();
+                    if (sync != null)
+                        prop.SetValue(tweak, Tweak.Tweaks[prop.PropertyType]);
+                }
+            }
+            Type tType;
+            Sync(tType = tweak.GetType());
+            TweakAttribute attr = tType.GetCustomAttribute<TweakAttribute>();
+            if (attr != null && attr.PatchesType != null)
+                Sync(attr.PatchesType);
         }
     }
     public enum GSCS
