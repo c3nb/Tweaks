@@ -183,7 +183,7 @@ namespace Tweaks
                 TweakRunner runner = new TweakRunner(tweak, settings, last, outerRunner);
                 if (outerRunner != null)
                     outerRunner.InnerTweaks.Add(runner);
-                var nestedTypes = tweakType.GetNestedTypes((BindingFlags)15420).Where(t => t.IsSubclassOf(tweakType));
+                var nestedTypes = tweakType.GetNestedTypes((BindingFlags)15420).Where(t => t.IsSubclassOf(typeof(Tweak)));
                 if (nestedTypes.Any())
                 {
                     var lastType = nestedTypes.Last();
@@ -916,7 +916,7 @@ namespace Tweaks
     [AttributeUsage(AttributeTargets.Class)]
     public class TweakAttribute : Attribute
     {
-        public TweakAttribute(string name, string desc = "")
+        public TweakAttribute(string name = "", string desc = "")
         {
             Name = name;
             Description = desc;
