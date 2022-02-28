@@ -65,7 +65,7 @@ public class TTSettings : TweakSettings
 }
 ```
 ## 결과
-![Result](Result.png)
+![Result](ResulT.png)
 ## BASED ON
 https://github.com/PizzaLovers007/AdofaiTweaks/blob/master/AdofaiTweaks/Core/Tweak.cs
 https://github.com/PizzaLovers007/AdofaiTweaks/blob/master/AdofaiTweaks/Core/TweakRunner.cs
