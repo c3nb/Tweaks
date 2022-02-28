@@ -99,7 +99,7 @@ namespace Tweaks
         {
             Tweak.TweakEntry = modEntry;
             SyncSettings.Load(modEntry);
-            TweakTypes = modEntry.Assembly.GetTypes().Where(t => t.IsSubclassOf(typeof(Tweak))).ToList();
+            TweakTypes = modEntry.Assembly.GetTypes().Where(t => t.IsSubclassOf(typeof(Tweak)) && !t.IsNested).ToList();
             if (modEntry.OnToggle == null)
                 modEntry.OnToggle = (m, v) => OnToggle(v);
             else OnHarmony.Patch(modEntry.OnToggle.Method, postfix: new HarmonyMethod(OT));
@@ -173,7 +173,6 @@ namespace Tweaks
             => RegisterTweakInternal(tweakType, null, false, sync);
         internal static void RegisterTweakInternal(Type tweakType, TweakRunner outerRunner, bool last, bool sync = true)
         {
-            Tweak.TweakEntry.Logger.Log(tweakType.ToString());
             try
             {
                 if (tweakType.BaseType != typeof(Tweak) && outerRunner == null) return;
@@ -624,7 +623,7 @@ namespace Tweaks
             Metadata = attr;
             Settings = settings;
             Patches = new List<TweakPatch>();
-            if (string.IsNullOrEmpty(tweak.Name))
+            if (!string.IsNullOrEmpty(tweak.Name))
                 Metadata.Name = tweak.Name;
             if (!string.IsNullOrEmpty(tweak.Description))
                 Metadata.Description = tweak.Description;
