@@ -38,6 +38,8 @@ namespace Tweaks
         {
             Runner.Disable();
         }
+        public virtual string Name { get; }
+        public virtual string Description { get; }
         public virtual void OnGUI() { }
         public virtual void OnPatch() { }
         public virtual void OnUnpatch() { }
@@ -130,8 +132,13 @@ namespace Tweaks
             Runners.ForEach(runner =>
             {
                 var tweak = runner.Tweak;
-                SyncSettings.Sync(tweak);
-                SyncTweak.Sync(tweak);
+                SyncSettings.Sync(tweak.GetType(), tweak);
+                SyncTweak.Sync(tweak.GetType(), tweak);
+                if (runner.Metadata.PatchesType != null)
+                {
+                    SyncSettings.Sync(runner.Metadata.PatchesType, tweak);
+                    SyncTweak.Sync(runner.Metadata.PatchesType, tweak);
+                }
             });
             Runners.ForEach(runner => runner.Start());
         }
@@ -188,8 +195,13 @@ namespace Tweaks
                     Runners.Add(runner);
                 if (sync)
                 {
-                    SyncSettings.Sync(tweak);
-                    SyncTweak.Sync(tweak);
+                    SyncSettings.Sync(tweak.GetType(), tweak);
+                    SyncTweak.Sync(tweak.GetType(), tweak);
+                    if (runner.Metadata.PatchesType != null)
+                    {
+                        SyncSettings.Sync(runner.Metadata.PatchesType, tweak);
+                        SyncTweak.Sync(runner.Metadata.PatchesType, tweak);
+                    }
                 }
                 Types.Add(tweakType);
             }
@@ -231,6 +243,248 @@ namespace Tweaks
             EV();
             EH();
         }
+        public static Color CRgbS(Color color)
+        {
+            float oldR = Mathf.Round(color.r * 255);
+            float oldG = Mathf.Round(color.g * 255);
+            float oldB = Mathf.Round(color.b * 255);
+            float newR = NS("R:", oldR, 0, 255, 300f, 1, 40f);
+            float newG = NS("G:", oldG, 0, 255, 300f, 1, 40f);
+            float newB = NS("B:", oldB, 0, 255, 300f, 1, 40f);
+            if (oldR != newR || oldG != newG || oldB != newB)
+            {
+                return new Color(newR / 255, newR / 255, newR / 255);
+            }
+            return color;
+        }
+        public static Color CRgbaS(Color color)
+        {
+            float oldR = Mathf.Round(color.r * 255);
+            float oldG = Mathf.Round(color.g * 255);
+            float oldB = Mathf.Round(color.b * 255);
+            float oldA = Mathf.Round(color.a * 255);
+            float newR = NS("R:", oldR, 0, 255, 300f, 1, 40f);
+            float newG = NS("G:", oldG, 0, 255, 300f, 1, 40f);
+            float newB = NS("B:", oldB, 0, 255, 300f, 1, 40f);
+            float newA = NS("A:", oldA, 0, 255, 300f, 1, 40f);
+            if (oldR != newR || oldG != newG || oldB != newB || oldA != newA)
+            {
+                return new Color(newR / 255, newR / 255, newR / 255, newA / 255);
+            }
+            return color;
+        }
+        public static (Color, Color) CRgbSP(Color color1, Color color2)
+        {
+            float newR1, newR2, newG1, newG2, newB1, newB2;
+            float oldR1 = Mathf.Round(color1.r * 255);
+            float oldG1 = Mathf.Round(color1.g * 255);
+            float oldB1 = Mathf.Round(color1.b * 255);
+            float oldR2 = Mathf.Round(color2.r * 255);
+            float oldG2 = Mathf.Round(color2.g * 255);
+            float oldB2 = Mathf.Round(color2.b * 255);
+            (newR1, newR2) = NSP("R:", "R:", oldR1, oldR2, 0, 255, 300f, 1, 40f);
+            (newG1, newG2) = NSP("G:", "G:", oldG1, oldG2, 0, 255, 300f, 1, 40f);
+            (newB1, newB2) = NSP("B:", "B:", oldB1, oldB2, 0, 255, 300f, 1, 40f);
+            if (oldR1 != newR1 || oldG1 != newG1 || oldB1 != newB1)
+            {
+                color1 = new Color(newR1 / 255, newG1 / 255, newB1 / 255);
+            }
+            if (oldR2 != newR2 || oldG2 != newG2 || oldB2 != newB2)
+            {
+                color2 = new Color(newR2 / 255, newG2 / 255, newB2 / 255);
+            }
+            return (color1, color2);
+        }
+        public static (Color, Color) CRgbaSP(Color color1, Color color2)
+        {
+            float newR1, newR2, newG1, newG2, newB1, newB2, newA1, newA2;
+            float oldR1 = Mathf.Round(color1.r * 255);
+            float oldG1 = Mathf.Round(color1.g * 255);
+            float oldB1 = Mathf.Round(color1.b * 255);
+            float oldA1 = Mathf.Round(color1.a * 255);
+            float oldR2 = Mathf.Round(color2.r * 255);
+            float oldG2 = Mathf.Round(color2.g * 255);
+            float oldB2 = Mathf.Round(color2.b * 255);
+            float oldA2 = Mathf.Round(color2.a * 255);
+            (newR1, newR2) = NSP("R:", "R:", oldR1, oldR2, 0, 255, 300f, 1, 40f);
+            (newG1, newG2) = NSP("G:", "G:", oldG1, oldG2, 0, 255, 300f, 1, 40f);
+            (newB1, newB2) = NSP("B:", "B:", oldB1, oldB2, 0, 255, 300f, 1, 40f);
+            (newA1, newA2) = NSP("A:", "A:", oldA1, oldA2, 0, 255, 300f, 1, 40f);
+            if (oldR1 != newR1 || oldG1 != newG1 || oldB1 != newB1 || oldA1 != newA1)
+            {
+                color1 = new Color(newR1 / 255, newG1 / 255, newB1 / 255, newA1 / 255);
+            }
+            if (oldR2 != newR2 || oldG2 != newG2 || oldB2 != newB2 || oldA2 != newA2)
+            {
+                color2 = new Color(newR2 / 255, newG2 / 255, newB2 / 255, newA2 / 255);
+            }
+            return (color1, color2);
+        }
+        public static float NS(string name, float value, float leftValue, float rightValue, float sliderWidth, float roundNearest = 0, float labelWidth = 0, string valueFormat = "{0}")
+        {
+            BH();
+            float newValue =
+                NSC(
+                    name,
+                    value,
+                    leftValue,
+                    rightValue,
+                    sliderWidth,
+                    roundNearest,
+                    labelWidth,
+                    valueFormat);
+            EH();
+            return newValue;
+        }
+        public static (float, float) NSP(string name1, string name2, float value1, float value2, float leftValue, float rightValue, float sliderWidth, float roundNearest = 0, float labelWidth = 0, string valueFormat = "{0}")
+        {
+            BH();
+            float newValue1 =
+                NSC(
+                    name1,
+                    value1,
+                    leftValue,
+                    rightValue,
+                    sliderWidth,
+                    roundNearest,
+                    labelWidth,
+                    valueFormat);
+            float newValue2 =
+                NSC(
+                    name2,
+                    value2,
+                    leftValue,
+                    rightValue,
+                    sliderWidth,
+                    roundNearest,
+                    labelWidth,
+                    valueFormat);
+            EH();
+            return (newValue1, newValue2);
+        }
+        private static float NSC(string name, float value, float leftValue, float rightValue, float sliderWidth, float roundNearest = 0, float labelWidth = 0, string valueFormat = "{0}")
+        {
+            if (labelWidth == 0)
+            {
+                L(name);
+                S(4f);
+            }
+            else
+            {
+                L(name, W(labelWidth));
+            }
+            float newValue =
+                HS(
+                    value, leftValue, rightValue, W(sliderWidth));
+            if (roundNearest != 0)
+            {
+                newValue = Mathf.Round(newValue / roundNearest) * roundNearest;
+            }
+            S(8f);
+            L(string.Format(valueFormat, newValue), W(40f));
+            FS();
+            return newValue;
+        }
+        public static string NTF(string name, string value, float fieldWidth, float labelWidth = 0)
+        {
+            BH();
+            string newValue = NTFC(name, value, fieldWidth, labelWidth);
+            EH();
+            return newValue;
+        }
+        public static (string, string) NTFP(string name1, string name2, string value1, string value2, float fieldWidth, float labelWidth = 0)
+        {
+            BH();
+            string newValue1 = NTFC(name1, value1, fieldWidth, labelWidth);
+            string newValue2 = NTFC(name2, value2, fieldWidth, labelWidth);
+            EH();
+            return (newValue1, newValue2);
+        }
+        private static string NTFC(string name, string value, float fieldWidth, float labelWidth = 0)
+        {
+            if (labelWidth == 0)
+            {
+                L(name);
+                S(4f);
+            }
+            else L(name, W(labelWidth));
+            string newValue = TF(value, W(fieldWidth));
+            FS();
+            return newValue;
+        }
+        public static bool TL<T>(List<T> list, ref int selectedIndex, Func<T, string> nameFunc)
+        {
+            bool changed = false;
+            int moveUp = -1, moveDown = -1;
+            for (int i = 0; i < list.Count; i++)
+            {
+                T curr = list[i];
+                string name = nameFunc.Invoke(curr);
+                BH();
+                BH();
+                if (Btn("▲") && i > 0)
+                {
+                    moveUp = i;
+                }
+                if (Btn("▼") && i < list.Count - 1)
+                {
+                    moveDown = i;
+                }
+                EH();
+                S(8f);
+                if (SGL.T(selectedIndex == i, name) && selectedIndex != i)
+                {
+                    selectedIndex = i;
+                    changed = true;
+                }
+                FS();
+                EH();
+            }
+            if (moveUp != -1)
+            {
+                changed = true;
+                T temp = list[moveUp];
+                list[moveUp] = list[moveUp - 1];
+                list[moveUp - 1] = temp;
+                if (moveUp - 1 == selectedIndex)
+                {
+                    selectedIndex++;
+                }
+                else if (moveUp == selectedIndex)
+                {
+                    selectedIndex--;
+                }
+            }
+            else if (moveDown != -1)
+            {
+                changed = true;
+                T temp = list[moveDown];
+                list[moveDown] = list[moveDown + 1];
+                list[moveDown + 1] = temp;
+                if (moveDown + 1 == selectedIndex)
+                {
+                    selectedIndex--;
+                }
+                else if (moveDown == selectedIndex)
+                {
+                    selectedIndex++;
+                }
+            }
+            return changed;
+        }
+        public static void HL(float thickness, float length = 0f)
+        {
+            Box(GUIContent.none, new GUIStyle()
+            {
+                margin = new RectOffset(8, 8, 4, 4),
+                padding = new RectOffset(),
+                fixedHeight = thickness,
+                fixedWidth = length,
+                normal = {
+                    background = Texture2D.whiteTexture,
+                },
+            });
+        }
         public static void BA(Rect screenRect, string text, GUIStyle style) => GUILayout.BeginArea(screenRect, text, style);
         public static void BA(Rect screenRect, Texture image, GUIStyle style) => GUILayout.BeginArea(screenRect, image, style);
         public static void BA(Rect screenRect, GUIContent content, GUIStyle style) => GUILayout.BeginArea(screenRect, content, style);
@@ -262,12 +516,12 @@ namespace Tweaks
         public static void Box(Texture image, params GUILayoutOption[] options) => GUILayout.Box(image, options);
         public static void Box(Texture image, GUIStyle style, params GUILayoutOption[] options) => GUILayout.Box(image, style, options);
         public static void Box(GUIContent content, params GUILayoutOption[] options) => GUILayout.Box(content, options);
-        public static bool B(Texture image, params GUILayoutOption[] options) => GUILayout.Button(image, options);
-        public static bool B(string text, params GUILayoutOption[] options) => GUILayout.Button(text, options);
-        public static bool B(GUIContent content, params GUILayoutOption[] options) => GUILayout.Button(content, options);
-        public static bool B(Texture image, GUIStyle style, params GUILayoutOption[] options) => GUILayout.Button(image, style, options);
-        public static bool B(GUIContent content, GUIStyle style, params GUILayoutOption[] options) => GUILayout.Button(content, style, options);
-        public static bool B(string text, GUIStyle style, params GUILayoutOption[] options) => GUILayout.Button(text, style, options);
+        public static bool Btn(Texture image, params GUILayoutOption[] options) => GUILayout.Button(image, options);
+        public static bool Btn(string text, params GUILayoutOption[] options) => GUILayout.Button(text, options);
+        public static bool Btn(GUIContent content, params GUILayoutOption[] options) => GUILayout.Button(content, options);
+        public static bool Btn(Texture image, GUIStyle style, params GUILayoutOption[] options) => GUILayout.Button(image, style, options);
+        public static bool Btn(GUIContent content, GUIStyle style, params GUILayoutOption[] options) => GUILayout.Button(content, style, options);
+        public static bool Btn(string text, GUIStyle style, params GUILayoutOption[] options) => GUILayout.Button(text, style, options);
         public static void EA() => GUILayout.EndArea();
         public static void EH() => GUILayout.EndHorizontal();
         public static void ESV() => GUILayout.EndScrollView();
@@ -350,6 +604,7 @@ namespace Tweaks
     {
         public static GUIStyle Expan;
         public static GUIStyle Enabl;
+        public static GUIStyle Enabl_Label;
         public static GUIStyle Descr;
         public static bool StyleInitialized = false;
         public Tweak Tweak { get; }
@@ -369,6 +624,10 @@ namespace Tweaks
             Metadata = attr;
             Settings = settings;
             Patches = new List<TweakPatch>();
+            if (string.IsNullOrEmpty(tweak.Name))
+                Metadata.Name = tweak.Name;
+            if (!string.IsNullOrEmpty(tweak.Description))
+                Metadata.Description = tweak.Description;
             Harmony = new Harmony($"Tweaks.{Metadata.Name}");
             InnerTweaks = new List<TweakRunner>();
             OuterTweak = outerTweak;
@@ -378,6 +637,8 @@ namespace Tweaks
                 AddPatches(Metadata.PatchesType);
             AddPatches(tweakType);
             Patches = Patches.OrderBy(t => t.Priority).ToList();
+            if (Metadata.MustNotBeDisabled)
+                Settings.IsEnabled = true;
             Tweak.Tweaks.Add(tweakType, tweak);
         }
         public void Start()
@@ -409,6 +670,7 @@ namespace Tweaks
         }
         public void Disable()
         {
+            if (Metadata.MustNotBeDisabled) return;
             Tweak.OnDisable();
             Harmony.UnpatchAll(Harmony.Id);
             Tweak.OnUnpatch();
@@ -429,6 +691,10 @@ namespace Tweaks
                 {
                     margin = new RectOffset(0, 4, 4, 4),
                 };
+                Enabl_Label = new GUIStyle(GUI.skin.label)
+                {
+                    margin = new RectOffset(0, 4, 4, 4),
+                };
                 Descr = new GUIStyle(GUI.skin.label)
                 {
                     fontStyle = FontStyle.Italic,
@@ -436,21 +702,35 @@ namespace Tweaks
                 StyleInitialized = true;
             }
             GUILayout.BeginHorizontal();
-            bool newIsExpanded = GUILayout.Toggle(Settings.IsExpanded, Settings.IsEnabled ? (Settings.IsExpanded ? "◢" : "▶") : "", Expan);
-            bool newIsEnabled = GUILayout.Toggle(Settings.IsEnabled, Metadata.Name, Enabl);
-            GUILayout.Label("-");
-            GUILayout.Label(Metadata.Description, Descr);
-            GUILayout.FlexibleSpace();
-            GUILayout.EndHorizontal();
-            if (newIsEnabled != Settings.IsEnabled)
+            bool newIsExpanded;
+            bool newIsEnabled = false;
+            if (Metadata.MustNotBeDisabled)
             {
-                Settings.IsEnabled = newIsEnabled;
-                if (newIsEnabled)
+                newIsExpanded = GUILayout.Toggle(Settings.IsExpanded, Settings.IsEnabled ? (Settings.IsExpanded ? "◢" : "▶") : "", Expan);
+                GUILayout.Label(Metadata.Name, Enabl_Label);
+                GUILayout.Label("-");
+                GUILayout.Label(Metadata.Description, Descr);
+                GUILayout.FlexibleSpace();
+                GUILayout.EndHorizontal();
+            }
+            else
+            {
+                newIsExpanded = GUILayout.Toggle(Settings.IsExpanded, Settings.IsEnabled ? (Settings.IsExpanded ? "◢" : "▶") : "", Expan);
+                newIsEnabled = GUILayout.Toggle(Settings.IsEnabled, Metadata.Name, Enabl);
+                GUILayout.Label("-");
+                GUILayout.Label(Metadata.Description, Descr);
+                GUILayout.FlexibleSpace();
+                GUILayout.EndHorizontal();
+                if (newIsEnabled != Settings.IsEnabled)
                 {
-                    Enable();
-                    newIsExpanded = true;
+                    Settings.IsEnabled = newIsEnabled;
+                    if (newIsEnabled)
+                    {
+                        Enable();
+                        newIsExpanded = true;
+                    }
+                    else Disable();
                 }
-                else Disable();
             }
             if (newIsExpanded != Settings.IsExpanded)
             {
@@ -641,10 +921,11 @@ namespace Tweaks
             Name = name;
             Description = desc;
         }
-        public string Name { get; }
-        public string Description { get; }
+        public string Name { get; internal set; }
+        public string Description { get; internal set; }
         public Type PatchesType { get; set; }
         public Type SettingsType { get; set; }
+        public bool MustNotBeDisabled { get; set; }
         public int Priority { get; set; }
     }
     public class SyncSettings : Attribute
@@ -664,28 +945,20 @@ namespace Tweaks
             try { Settings[settingsType] = (TweakSettings)load.MakeGenericMethod(settingsType).Invoke(null, new object[] { modEntry }); }
             catch { Settings[settingsType] = (TweakSettings)Activator.CreateInstance(settingsType); }
         }
-        public static void Sync(Tweak tweak)
+        public static void Sync(Type type, object instance = null)
         {
-            void Sync(Type type)
+            foreach (var field in type.GetFields((BindingFlags)15420))
             {
-                foreach (var field in type.GetFields((BindingFlags)15420))
-                {
-                    SyncSettings sync = field.GetCustomAttribute<SyncSettings>();
-                    if (sync != null)
-                        field.SetValue(tweak, Settings[field.FieldType]);
-                }
-                foreach (var prop in type.GetProperties((BindingFlags)15420))
-                {
-                    SyncSettings sync = prop.GetCustomAttribute<SyncSettings>();
-                    if (sync != null)
-                        prop.SetValue(tweak, Settings[prop.PropertyType]);
-                }
+                SyncSettings sync = field.GetCustomAttribute<SyncSettings>();
+                if (sync != null)
+                    field.SetValue(instance, Settings[field.FieldType]);
             }
-            Type tType;
-            Sync(tType = tweak.GetType());
-            TweakAttribute attr = tType.GetCustomAttribute<TweakAttribute>();
-            if (attr != null && attr.PatchesType != null)
-                Sync(attr.PatchesType);
+            foreach (var prop in type.GetProperties((BindingFlags)15420))
+            {
+                SyncSettings sync = prop.GetCustomAttribute<SyncSettings>();
+                if (sync != null)
+                    prop.SetValue(instance, Settings[prop.PropertyType]);
+            }
         }
         public static void Save(ModEntry modEntry)
         {
@@ -695,28 +968,20 @@ namespace Tweaks
     }
     public class SyncTweak : Attribute
     {
-        public static void Sync(Tweak tweak)
+        public static void Sync(Type type, object instance = null)
         {
-            void Sync(Type type)
+            foreach (var field in type.GetFields((BindingFlags)15420))
             {
-                foreach (var field in type.GetFields((BindingFlags)15420))
-                {
-                    SyncTweak sync = field.GetCustomAttribute<SyncTweak>();
-                    if (sync != null)
-                        field.SetValue(tweak, Tweak.Tweaks[field.FieldType]);
-                }
-                foreach (var prop in type.GetProperties((BindingFlags)15420))
-                {
-                    SyncTweak sync = prop.GetCustomAttribute<SyncTweak>();
-                    if (sync != null)
-                        prop.SetValue(tweak, Tweak.Tweaks[prop.PropertyType]);
-                }
+                SyncTweak sync = field.GetCustomAttribute<SyncTweak>();
+                if (sync != null)
+                    field.SetValue(instance, Tweak.Tweaks[field.FieldType]);
             }
-            Type tType;
-            Sync(tType = tweak.GetType());
-            TweakAttribute attr = tType.GetCustomAttribute<TweakAttribute>();
-            if (attr != null && attr.PatchesType != null)
-                Sync(attr.PatchesType);
+            foreach (var prop in type.GetProperties((BindingFlags)15420))
+            {
+                SyncTweak sync = prop.GetCustomAttribute<SyncTweak>();
+                if (sync != null)
+                    prop.SetValue(instance, Tweak.Tweaks[prop.PropertyType]);
+            }
         }
     }
     public enum GSCS
