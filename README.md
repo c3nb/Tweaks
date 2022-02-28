@@ -32,7 +32,7 @@ public class TestTweak : Tweak
     }
     public override void OnGUI()
     {
-        GUIL.L("Nice");
+        SGL.L("Nice");
     }
     public override void OnHideGUI()
     {
