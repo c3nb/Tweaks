@@ -15,7 +15,7 @@ public class Main
 
 TestTweaks.cs
 ```cs
-[Tweak("TestTweak", "Only Test", PatchesType = typeof(TTPatches), SettingsType = typeof(TTSettings))]
+[Tweak("TestTweak", "Only Test", PatchesType = typeof(TTPatches), SettingsType = typeof(TTSettings), Priority = 0)]
 public class TestTweak : Tweak
 {
     [SyncSettings] //Sync TweakSettings
