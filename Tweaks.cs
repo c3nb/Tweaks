@@ -126,7 +126,13 @@ namespace Tweaks
         private static void Start()
         {
             foreach (Type tweakType in TweakTypes.OrderBy(t => t.GetCustomAttribute<TweakAttribute>().Name).OrderBy(t => t.GetCustomAttribute<TweakAttribute>().Priority))
-                RegisterTweak(tweakType);
+                RegisterTweak(tweakType, false);
+            Runners.ForEach(runner =>
+            {
+                var tweak = runner.Tweak;
+                SyncSettings.Sync(tweak);
+                SyncTweak.Sync(tweak);
+            });
             Runners.ForEach(runner => runner.Start());
         }
         private static void Stop()
@@ -148,19 +154,17 @@ namespace Tweaks
         }
         private static void OnGUI()
         {
-            foreach (TweakRunner runner in Runners)
-                runner.OnGUI();
+            Runners.ForEach(runner => runner.OnGUI());
         }
         private static void OnSaveGUI()
             => SyncSettings.Save(Tweak.TweakEntry);
         private static void OnUpdate()
         {
-            foreach (TweakRunner runner in Runners)
-                runner.OnUpdate();
+            Runners.ForEach(runner => runner.OnUpdate());
         }
-        public static void RegisterTweak(Type tweakType)
-            => RegisterTweakInternal(tweakType, null, false);
-        internal static void RegisterTweakInternal(Type tweakType, TweakRunner outerRunner, bool last)
+        public static void RegisterTweak(Type tweakType, bool sync = true)
+            => RegisterTweakInternal(tweakType, null, false, sync);
+        internal static void RegisterTweakInternal(Type tweakType, TweakRunner outerRunner, bool last, bool sync = true)
         {
             Tweak.TweakEntry.Logger.Log(tweakType.ToString());
             try
@@ -177,13 +181,16 @@ namespace Tweaks
                 {
                     var lastType = nestedTypes.Last();
                     foreach (Type type in nestedTypes)
-                        RegisterTweakInternal(type, runner, type == lastType);
+                        RegisterTweakInternal(type, runner, type == lastType, sync);
                 }
                 R.SetValue(tweak, runner);
                 if (outerRunner == null)
                     Runners.Add(runner);
-                SyncSettings.Sync(tweak);
-                SyncTweak.Sync(tweak);
+                if (sync)
+                {
+                    SyncSettings.Sync(tweak);
+                    SyncTweak.Sync(tweak);
+                }
                 Types.Add(tweakType);
             }
             catch (Exception e)
@@ -398,12 +405,14 @@ namespace Tweaks
                 else Harmony.Patch(patch.Target, postfix: new HarmonyMethod(patch.Patch));
             }
             Tweak.OnPatch();
+            InnerTweaks.ForEach(runner => runner.Enable());
         }
         public void Disable()
         {
             Tweak.OnDisable();
             Harmony.UnpatchAll(Harmony.Id);
             Tweak.OnUnpatch();
+            InnerTweaks.ForEach(runner => runner.Disable());
         }
         public void OnGUI()
         {
@@ -455,8 +464,7 @@ namespace Tweaks
                 GUILayout.Space(24f);
                 GUILayout.BeginVertical();
                 Tweak.OnGUI();
-                foreach (var runner in InnerTweaks)
-                    runner.OnGUI();
+                InnerTweaks.ForEach(runner => runner.OnGUI());
                 GUILayout.EndVertical();
                 GUILayout.EndHorizontal();
                 if (!Last)
@@ -467,11 +475,13 @@ namespace Tweaks
         {
             if (Settings.IsEnabled)
                 Tweak.OnUpdate();
+            InnerTweaks.ForEach(runner => runner.OnUpdate());
         }
         public void OnHideGUI()
         {
             if (Settings.IsEnabled)
                 Tweak.OnHideGUI();
+            InnerTweaks.ForEach(runner => runner.OnHideGUI());
         }
         private void AddPatches(Type patchesType)
         {
