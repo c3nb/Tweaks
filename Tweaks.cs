@@ -4,6 +4,7 @@ using HarmonyLib;
 using System.Linq;
 using UnityEngine;
 using System.Reflection;
+using Rnr = Tweaks.Runner;
 using System.Xml.Serialization;
 using System.Collections.Generic;
 using static UnityModManagerNet.UnityModManager;
@@ -21,6 +22,14 @@ namespace Tweaks
         public static ModEntry TweakEntry { get; internal set; }
         public void Log(object obj)
             => TweakEntry.Logger.Log($"[{Runner.Metadata.Name}] {obj}");
+        public void RegisterInnerTweak(Type tweakType)
+        {
+            var innerTweaks = Runner.InnerTweaks;
+            if (innerTweaks.Any())
+                innerTweaks.Last().Last = false;
+            var tweak = Rnr.InitTweak(tweakType, out var settings);
+            innerTweaks.Add(new TweakRunner(tweak, settings, true));
+        }
         public void Enable()
         {
             Runner.Enable();
@@ -149,30 +158,29 @@ namespace Tweaks
             foreach (TweakRunner runner in Runners)
                 runner.OnUpdate();
         }
-        public static void RegisterTweak(Type tweakType, Type outerType = null)
+        public static void RegisterTweak(Type tweakType)
+            => RegisterTweakInternal(tweakType, null, false);
+        internal static void RegisterTweakInternal(Type tweakType, TweakRunner outerRunner, bool last)
         {
             Tweak.TweakEntry.Logger.Log(tweakType.ToString());
             try
             {
-                if (tweakType.BaseType != typeof(Tweak) && outerType == null) return;
+                if (tweakType.BaseType != typeof(Tweak) && outerRunner == null) return;
                 if (!TweakTypes.Contains(tweakType)) TweakTypes.Add(tweakType);
                 if (Types.Contains(tweakType)) return;
-                ConstructorInfo constructor = tweakType.GetConstructor(new Type[] { });
-                Tweak tweak = (Tweak)constructor.Invoke(null);
-                TweakSettings settings;
-                TweakAttribute attr = tweakType.GetCustomAttribute<TweakAttribute>();
-                if (attr == null)
-                    throw new NullReferenceException("Cannot Find Tweak Metadata! (TweakAttribute)");
-                if (!(attr.SettingsType != null && SyncSettings.Settings.TryGetValue(attr.SettingsType, out settings)))
-                    settings = new TweakSettings();
-                TweakRunner runner = new TweakRunner(tweak, settings);
-                RunnersDict[tweakType] = runner;
-                if (outerType != null && RunnersDict.TryGetValue(outerType, out var outerRunner))
+                Tweak tweak = InitTweak(tweakType, out var settings);
+                TweakRunner runner = new TweakRunner(tweak, settings, last, outerRunner);
+                if (outerRunner != null)
                     outerRunner.InnerTweaks.Add(runner);
-                foreach (Type type in tweakType.GetNestedTypes((BindingFlags)15420).Where(t => t.IsSubclassOf(typeof(Tweak))))
-                    RegisterTweak(type, tweakType);
+                var nestedTypes = tweakType.GetNestedTypes((BindingFlags)15420).Where(t => t.IsSubclassOf(tweakType));
+                if (nestedTypes.Any())
+                {
+                    var lastType = nestedTypes.Last();
+                    foreach (Type type in nestedTypes)
+                        RegisterTweakInternal(type, runner, type == lastType);
+                }
                 R.SetValue(tweak, runner);
-                if (outerType == null)
+                if (outerRunner == null)
                     Runners.Add(runner);
                 SyncSettings.Sync(tweak);
                 SyncTweak.Sync(tweak);
@@ -183,6 +191,17 @@ namespace Tweaks
                 Tweak.TweakEntry.Logger.Log(tweakType.ToString());
                 throw e;
             }
+        }
+        internal static Tweak InitTweak(Type tweakType, out TweakSettings settings)
+        {
+            ConstructorInfo constructor = tweakType.GetConstructor(new Type[] { });
+            Tweak tweak = (Tweak)constructor.Invoke(null);
+            TweakAttribute attr = tweakType.GetCustomAttribute<TweakAttribute>();
+            if (attr == null)
+                throw new NullReferenceException("Cannot Find Tweak Metadata! (TweakAttribute)");
+            if (!(attr.SettingsType != null && SyncSettings.Settings.TryGetValue(attr.SettingsType, out settings)))
+                settings = new TweakSettings();
+            return tweak;
         }
         public static void UnregisterTweak(Type tweakType)
         {
@@ -334,9 +353,9 @@ namespace Tweaks
         public List<TweakPatch> Patches { get; }
         public Harmony Harmony { get; }
         public bool Inner { get; }
-        public int Count { get; }
-        public TweakRunner(Tweak tweak, TweakSettings settings, TweakRunner outerTweak = null, int count = 0) : this(tweak, tweak.GetType().GetCustomAttribute<TweakAttribute>(), settings, outerTweak, count) { }
-        public TweakRunner(Tweak tweak, TweakAttribute attr, TweakSettings settings, TweakRunner outerTweak = null, int count = 0)
+        public bool Last { get; internal set; }
+        public TweakRunner(Tweak tweak, TweakSettings settings, bool last, TweakRunner outerTweak = null) : this(tweak, tweak.GetType().GetCustomAttribute<TweakAttribute>(), settings, last, outerTweak) { }
+        public TweakRunner(Tweak tweak, TweakAttribute attr, TweakSettings settings, bool last, TweakRunner outerTweak = null)
         {
             Type tweakType = tweak.GetType();
             Tweak = tweak;
@@ -347,7 +366,7 @@ namespace Tweaks
             InnerTweaks = new List<TweakRunner>();
             OuterTweak = outerTweak;
             Inner = outerTweak != null;
-            Count = count;
+            Last = last;
             if (Metadata.PatchesType != null)
                 AddPatches(Metadata.PatchesType);
             AddPatches(tweakType);
@@ -433,14 +452,15 @@ namespace Tweaks
             if (Settings.IsExpanded && Settings.IsEnabled)
             {
                 GUILayout.BeginHorizontal();
-                GUILayout.Space(Inner ? (Count + 1) * 24f : 24f);
+                GUILayout.Space(24f);
                 GUILayout.BeginVertical();
                 Tweak.OnGUI();
                 foreach (var runner in InnerTweaks)
                     runner.OnGUI();
                 GUILayout.EndVertical();
                 GUILayout.EndHorizontal();
-                GUILayout.Space(12f);
+                if (!Last)
+                    GUILayout.Space(12f);
             }
         }
         public void OnUpdate()
