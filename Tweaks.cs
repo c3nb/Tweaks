@@ -108,7 +108,7 @@ namespace Tweaks
         private static void Start()
         {
             var last = TweakTypes.Last();
-            foreach (Type tweakType in TweakTypes)
+            foreach (Type tweakType in TweakTypes.OrderBy(t => t.GetCustomAttribute<TweakAttribute>().Name).OrderBy(t => t.GetCustomAttribute<TweakAttribute>().Priority))
                 RegisterTweak(tweakType, tweakType == last);
             Runners.ForEach(runner => runner.Start());
         }
@@ -581,6 +581,7 @@ namespace Tweaks
         public string Description { get; }
         public Type PatchesType { get; set; }
         public Type SettingsType { get; set; }
+        public int Priority { get; set; }
     }
     public class SyncSettings : Attribute
     {
