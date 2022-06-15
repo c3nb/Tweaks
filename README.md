@@ -51,7 +51,7 @@ public class TestTweak : Tweak
         }
         public override void OnGUI()
         {
-            SGL.L("NiceInner");
+            GUILayout.Label("NiceInner");
         }
     }
 }
