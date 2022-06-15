@@ -32,7 +32,7 @@ public class TestTweak : Tweak
     }
     public override void OnGUI()
     {
-        SGL.L("Nice");
+        GUILayout.Label("Nice");
     }
     public override void OnHideGUI()
     {
