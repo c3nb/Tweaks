@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using UnityEngine;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Xml.Serialization;
 using System.Collections.Generic;
 using static UnityModManagerNet.UnityModManager;
@@ -21,7 +22,9 @@ namespace Tweaks
             => TweakEntry.Logger.Log($"{Runner.LogPrefix}{obj}");
         public void Enable() => Runner.Enable();
         public void Disable() => Runner.Disable();
+        public virtual void OnPreGUI() { }
         public virtual void OnGUI() { }
+        public virtual void OnPostGUI() { }
         public virtual void OnPatch() { }
         public virtual void OnUnpatch() { }
         public virtual void OnEnable() { }
@@ -32,16 +35,28 @@ namespace Tweaks
     }
     public class TweakSettings : ModSettings
     {
+        static TweakSettings()
+        {
+            string name = new object().GetHashCode().ToString();
+            dynSettingsAssembly = AssemblyBuilder.DefineDynamicAssembly(new AssemblyName(name), AssemblyBuilderAccess.Run);
+            dynSettingsModule = dynSettingsAssembly.DefineDynamicModule(name);
+            settingTypes = new Dictionary<TweakAttribute, Type>();
+        }
+        public static Type GetSettingType(TweakAttribute metadata, Type tweakType)
+        {
+            if (metadata.SettingsType != null) return metadata.SettingsType;
+            else if (settingTypes.TryGetValue(metadata, out Type created)) return created;
+            else return settingTypes[metadata] = dynSettingsModule.DefineType($"{tweakType.FullName.Replace('.', '_').Replace('+', '_')}Settings", TypeAttributes.Public, typeof(TweakSettings)).CreateType();
+        }
+        static readonly AssemblyBuilder dynSettingsAssembly;
+        static readonly ModuleBuilder dynSettingsModule;
+        static readonly Dictionary<TweakAttribute, Type> settingTypes;
         public bool IsEnabled;
         public bool IsExpanded;
-        public bool IsInitialized;
-        public TweakSettings[] InnerSettings;
-        internal int innerIndex;
         public override string GetPath(ModEntry modEntry)
             => Path.Combine(modEntry.Path, GetType().Name + ".xml");
         public override void Save(ModEntry modEntry)
         {
-            Initialize();
             var filepath = GetPath(modEntry);
             try
             {
@@ -57,20 +72,12 @@ namespace Tweaks
                 modEntry.Logger.LogException(e);
             }
         }
-        void Initialize()
-        {
-            if (InnerSettings != null)
-                for (int i = 0; i < InnerSettings.Length; i++)
-                    InnerSettings[i].Initialize();
-            IsInitialized = true;
-        }
     }
     public static class Runner
     {
         static Runner()
         {
-            Types = new List<Type>();
-            OnHarmony = new Harmony("onHarmony");
+            OnHarmony = new Harmony($"onHarmony{new object().GetHashCode()}");
             Runners = new List<TweakRunner>();
             RunnersDict = new Dictionary<Type, TweakRunner>();
             OT = typeof(Runner).GetMethod(nameof(Runner.OnToggle), (BindingFlags)15420);
@@ -121,7 +128,6 @@ namespace Tweaks
         private static List<Type> TweakTypes { get; set; }
         private static Dictionary<Type, TweakRunner> RunnersDict { get; }
         private static List<TweakRunner> Runners { get; }
-        private static List<Type> Types { get; }
         private static void Start()
         {
             foreach (Type tweakType in TweakTypes.OrderBy(t => t.GetCustomAttribute<TweakAttribute>().Name).OrderBy(t => t.GetCustomAttribute<TweakAttribute>().Priority))
@@ -151,41 +157,16 @@ namespace Tweaks
             => SyncSettings.Save(Tweak.TweakEntry);
         private static void OnUpdate()
             => Runners.ForEach(runner => runner.OnUpdate());
-        internal static void RegisterTweakInternal(Type tweakType, TweakRunner outerRunner, bool last)
+        internal static void RegisterTweakInternal(Type tweakType, TweakRunner outerRunner, bool last, int innerTime = 0)
         {
             try
             {
                 if (tweakType.BaseType != typeof(Tweak) && outerRunner == null) return;
-                if (!TweakTypes.Contains(tweakType)) TweakTypes.Add(tweakType);
-                if (Types.Contains(tweakType)) return;
+                if (Tweak.Tweaks.Keys.Contains(tweakType)) return;
                 Tweak tweak = InitTweak(tweakType, out var settings, out var attr);
-                TweakRunner runner = new TweakRunner(tweak, settings, last, outerRunner);
+                TweakRunner runner = new TweakRunner(tweak, attr, settings, last, outerRunner, innerTime);
                 tweak.Runner = runner;
-                if (outerRunner != null)
-                {
-                    outerRunner.InnerTweaks.Add(runner);
-                    if (attr.SettingsType == null)
-                    {
-                        TweakSettings outSetting = outerRunner.Settings;
-                        var array = outSetting.InnerSettings;
-                        if (!outSetting.IsInitialized)
-                        {
-                            if (array == null)
-                            {
-                                outSetting.InnerSettings = new TweakSettings[1];
-                                outSetting.InnerSettings[0] = settings;
-                            }
-                            else
-                            {
-                                Array.Resize(ref outSetting.InnerSettings, array.Length + 1);
-                                array = outSetting.InnerSettings;
-                                outSetting.InnerSettings[array.Length - 1] = settings;
-                            }
-                        }
-                        else if (outSetting.InnerSettings.Length > outSetting.innerIndex)
-                            runner.Settings = outSetting.InnerSettings[outSetting.innerIndex++];
-                    }
-                }
+                if (outerRunner != null) outerRunner.InnerTweaks.Add(runner);
                 else runner.Last = Tweak.Tweaks.Values.Last() == tweak;
                 if (outerRunner == null)
                     Runners.Add(runner);
@@ -193,8 +174,9 @@ namespace Tweaks
                 if (nestedTypes.Any())
                 {
                     var lastType = nestedTypes.Last();
+                    innerTime++;
                     foreach (Type type in nestedTypes)
-                        RegisterTweakInternal(type, runner, type == lastType);
+                        RegisterTweakInternal(type, runner, type == lastType, innerTime);
                 }
                 SyncSettings.Sync(tweak.GetType(), tweak);
                 SyncTweak.Sync(tweak.GetType(), tweak);
@@ -203,7 +185,6 @@ namespace Tweaks
                     SyncSettings.Sync(runner.Metadata.PatchesType, tweak);
                     SyncTweak.Sync(runner.Metadata.PatchesType, tweak);
                 }
-                Types.Add(tweakType);
             }
             catch (Exception e)
             {
@@ -218,19 +199,29 @@ namespace Tweaks
             attr = tweakType.GetCustomAttribute<TweakAttribute>();
             if (attr == null)
                 throw new NullReferenceException("Cannot Find Tweak Metadata! (TweakAttribute)");
-            if (attr.SettingsType != null)
-            {
-                SyncSettings.Register(Tweak.TweakEntry, attr.SettingsType);
-                settings = SyncSettings.Settings[attr.SettingsType];
-            }
-            else settings = new TweakSettings();
+            Type settingType = TweakSettings.GetSettingType(attr, tweakType);
+            SyncSettings.Register(Tweak.TweakEntry, settingType);
+            settings = SyncSettings.Settings[settingType];
+            Tweak.Tweaks.Add(tweakType, tweak);
             return tweak;
         }
     }
     #endregion
     #region Internals
+    internal class TweakGroup
+    {
+        public List<TweakRunner> runners;
+        public TweakGroup(List<TweakRunner> runners)
+            => this.runners = runners;
+        public void Enable(TweakRunner runner)
+        {
+            foreach (TweakRunner rnr in runners.Where(r => r != runner))
+                rnr.Disable();
+        }
+    }
     internal class TweakRunner
     {
+        public static Dictionary<int, Dictionary<string, TweakGroup>> Groups = new Dictionary<int, Dictionary<string, TweakGroup>>();
         public static GUIStyle Expan;
         public static GUIStyle Enabl;
         public static GUIStyle Enabl_Label;
@@ -245,11 +236,11 @@ namespace Tweaks
         public Harmony Harmony { get; }
         public bool Inner { get; }
         public bool Last;
-        public TweakRunner(Tweak tweak, TweakSettings settings, bool last, TweakRunner outerTweak = null) : this(tweak, tweak.GetType().GetCustomAttribute<TweakAttribute>(), settings, last, outerTweak) { }
-        public TweakRunner(Tweak tweak, TweakAttribute attr, TweakSettings settings, bool last, TweakRunner outerTweak = null)
+        public int InnerTime;
+        public TweakGroup Group;
+        public TweakRunner(Tweak tweak, TweakAttribute attr, TweakSettings settings, bool last, TweakRunner outerTweak, int innerTime)
         {
             Type tweakType = tweak.GetType();
-            Tweak.Tweaks.Add(tweakType, tweak);
             Tweak = tweak;
             Metadata = attr;
             Settings = settings;
@@ -258,6 +249,16 @@ namespace Tweaks
             InnerTweaks = new List<TweakRunner>();
             OuterTweak = outerTweak;
             Inner = outerTweak != null;
+            InnerTime = innerTime;
+            TweakGroupAttribute group = tweakType.GetCustomAttribute<TweakGroupAttribute>();
+            if (group != null)
+            {
+                if (!Groups.TryGetValue(innerTime, out var groups))
+                    Groups.Add(innerTime, groups = new Dictionary<string, TweakGroup>());
+                if (groups.TryGetValue(group.Id, out Group))
+                    Group.runners.Add(this);
+                else groups.Add(group.Id, Group = new TweakGroup(new List<TweakRunner>() { this }));
+            }
             Last = last;
             if (Metadata.PatchesType != null)
                 AddPatches(Metadata.PatchesType, true);
@@ -318,6 +319,7 @@ namespace Tweaks
             }
             Tweak.OnPatch();
             Settings.IsEnabled = true;
+            Group?.Enable(this);
         }
         public void Disable()
         {
@@ -353,6 +355,7 @@ namespace Tweaks
                 };
                 StyleInitialized = true;
             }
+            Tweak.OnPreGUI();
             GUILayout.BeginHorizontal();
             bool newIsExpanded;
             bool newIsEnabled = false;
@@ -408,6 +411,7 @@ namespace Tweaks
                 if (!Last)
                     GUILayout.Space(12f);
             }
+            Tweak.OnPostGUI();
         }
         public void OnUpdate()
         {
@@ -575,7 +579,7 @@ namespace Tweaks
             return result;
         }
     }
-    [AttributeUsage(AttributeTargets.Class)]
+    [AttributeUsage(AttributeTargets.Class, Inherited = false)]
     public class TweakAttribute : Attribute
     {
         public TweakAttribute(string name, string desc = null)
@@ -592,6 +596,12 @@ namespace Tweaks
         public int Priority;
         public float IndentSize;
     }
+    [AttributeUsage(AttributeTargets.Class, Inherited = false)]
+    public class TweakGroupAttribute : Attribute
+    {
+        public string Id;
+        public TweakGroupAttribute() => Id = "Default";
+    }
     public class SyncSettings : Attribute
     {
         public static Dictionary<Type, TweakSettings> Settings = new Dictionary<Type, TweakSettings>();
@@ -607,13 +617,17 @@ namespace Tweaks
             {
                 SyncSettings sync = field.GetCustomAttribute<SyncSettings>();
                 if (sync != null)
-                    field.SetValue(instance, Settings[field.FieldType]);
+                    if (field.IsStatic)
+                        field.SetValue(null, Settings[field.FieldType]);
+                    else field.SetValue(instance, Settings[field.FieldType]);
             }
             foreach (var prop in type.GetProperties((BindingFlags)15420))
             {
                 SyncSettings sync = prop.GetCustomAttribute<SyncSettings>();
                 if (sync != null)
-                    prop.SetValue(instance, Settings[prop.PropertyType]);
+                    if (prop.GetGetMethod(true).IsStatic)
+                        prop.SetValue(null, Settings[prop.PropertyType]);
+                    else prop.SetValue(instance, Settings[prop.PropertyType]);
             }
         }
         public static void Save(ModEntry modEntry)
@@ -630,13 +644,17 @@ namespace Tweaks
             {
                 SyncTweak sync = field.GetCustomAttribute<SyncTweak>();
                 if (sync != null)
-                    field.SetValue(instance, Tweak.Tweaks[field.FieldType]);
+                    if (field.IsStatic)
+                        field.SetValue(null, Tweak.Tweaks[field.FieldType]);
+                    else field.SetValue(instance, Tweak.Tweaks[field.FieldType]);
             }
             foreach (var prop in type.GetProperties((BindingFlags)15420))
             {
                 SyncTweak sync = prop.GetCustomAttribute<SyncTweak>();
                 if (sync != null)
-                    prop.SetValue(instance, Tweak.Tweaks[prop.PropertyType]);
+                    if (prop.GetGetMethod(true).IsStatic)
+                        prop.SetValue(null, Tweak.Tweaks[prop.PropertyType]);
+                    else prop.SetValue(instance, Tweak.Tweaks[prop.PropertyType]);
             }
         }
     }
