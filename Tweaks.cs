@@ -232,8 +232,8 @@ namespace Tweaks
         public List<TweakRunner> InnerTweaks { get; }
         public TweakAttribute Metadata { get; }
         public TweakSettings Settings { get; internal set; }
-        public List<TweakPatch> Patches { get; }
         public Harmony Harmony { get; }
+        public List<TweakPatch> Patches { get; }
         public bool Inner { get; }
         public bool Last;
         public int InnerTime;
@@ -244,10 +244,10 @@ namespace Tweaks
             Tweak = tweak;
             Metadata = attr;
             Settings = settings;
-            Patches = new List<TweakPatch>();
             Harmony = new Harmony($"Tweaks.{Metadata.Name}");
             InnerTweaks = new List<TweakRunner>();
             OuterTweak = outerTweak;
+            Patches = new List<TweakPatch>();
             Inner = outerTweak != null;
             InnerTime = innerTime;
             TweakGroupAttribute group = tweakType.GetCustomAttribute<TweakGroupAttribute>();
@@ -263,7 +263,6 @@ namespace Tweaks
             if (Metadata.PatchesType != null)
                 AddPatches(Metadata.PatchesType, true);
             AddPatches(tweakType, false);
-            Patches = Patches.OrderBy(t => t.Priority).ToList();
             if (Metadata.MustNotBeDisabled)
                 Settings.IsEnabled = true;
         }
@@ -311,7 +310,7 @@ namespace Tweaks
                     Harmony.CreateClassProcessor(type).Patch();
             foreach (Type type in Tweak.GetType().GetNestedTypes((BindingFlags)15420))
                 Harmony.CreateClassProcessor(type).Patch();
-            foreach (var patch in Patches)
+            foreach (var patch in Patches.OrderBy(tp => tp.Priority))
             {
                 if (patch.Prefix)
                     Harmony.Patch(patch.Target, new HarmonyMethod(patch.Patch));
@@ -430,25 +429,11 @@ namespace Tweaks
             void AddPatches(Type t)
             {
                 foreach (MethodInfo method in t.GetMethods((BindingFlags)15420))
-                {
-                    IEnumerable<TweakPatch> patches = method.GetCustomAttributes<TweakPatch>(true);
-                    foreach (TweakPatch patch in patches)
+                    foreach (TweakPatch patch in method.GetCustomAttributes<TweakPatch>(true))
                     {
-                        if (patch.IsValid)
-                        {
-                            patch.Patch = method;
-                            if (patch.Target == null)
-                                patch.Target = TweakPatch.FindMethod(patch.Patch.Name.Replace(patch.Splitter, '.'), patch.MethodType, false);
-                            if (patch.Target == null)
-                            {
-                                if (patch.ThrowOnNull)
-                                    throw new NullReferenceException("Cannot Patch Due To Target Is Null!");
-                                else continue;
-                            }
-                            Patches.Add(patch);
-                        }
+                        patch.Patch = method;
+                        Patches.Add(patch);
                     }
-                }
             }
             if (patchNestedTypes)
             {
@@ -478,106 +463,26 @@ namespace Tweaks
     [AttributeUsage(AttributeTargets.Method, AllowMultiple = true, Inherited = true)]
     public class TweakPatch : Attribute
     {
-        public static readonly int Version = (int)AccessTools.Field(Type.GetType("GCNS"), "releaseNumber").GetValue(null);
-        internal MethodInfo Patch;
+        public static readonly int Version = (int)AccessTools.Field(typeof(GCNS), "releaseNumber").GetValue(null);
         public bool Prefix;
         public string PatchId;
         public int Priority;
         public int MinVersion;
         public int MaxVersion;
-        public bool ThrowOnNull;
-        public GSCS MethodType;
-        public char Splitter = '_';
         public MethodBase Target;
-        internal TweakPatch(MethodBase target)
-            => Target = target;
-        public TweakPatch(Type type, string name, params Type[] parameterTypes) : this(type, name, GSCS.None, parameterTypes) { }
-        public TweakPatch(Type type, string name, GSCS methodType, params Type[] parameterTypes) : this(methodType)
+        internal MethodInfo Patch;
+        public TweakPatch(Type type, string name, params Type[] parameterTypes)
         {
-            if (methodType != GSCS.None)
+            if (parameterTypes.Length == 0)
             {
-                switch (methodType)
-                {
-                    case GSCS.Getter:
-                        var prop = type.GetProperty(name, (BindingFlags)15420);
-                        Target = prop.GetGetMethod(true);
-                        break;
-                    case GSCS.Setter:
-                        prop = type.GetProperty(name, (BindingFlags)15420);
-                        Target = prop.GetSetMethod(true);
-                        break;
-                    case GSCS.Constructor:
-                        Target = type.GetConstructor((BindingFlags)15420, null, parameterTypes, null);
-                        break;
-                    case GSCS.StaticConstructor:
-                        Target = type.TypeInitializer;
-                        break;
-                }
+                try { Target = type.GetMethod(name, AccessTools.all); }
+                catch (AmbiguousMatchException) { goto ParamMethod; }
+                return;
             }
-            else Target = parameterTypes.Any() ? type.GetMethod(name, (BindingFlags)15420, null, parameterTypes, null) : type.GetMethod(name, (BindingFlags)15420);
+        ParamMethod:
+            Target = type.GetMethod(name, AccessTools.all, null, parameterTypes, null);
         }
-        public TweakPatch(string fullName, GSCS methodType = GSCS.None) : this(methodType)
-            => Target = FindMethod(fullName, MethodType, false);
-        public TweakPatch(GSCS methodType = GSCS.None)
-            => MethodType = methodType;
         public bool IsValid => (MinVersion == -1 || Version >= MinVersion) && (MaxVersion == -1 || Version <= MaxVersion);
-        public static MethodBase FindMethod(string fullName, GSCS methodType = GSCS.None, bool filterProp = true, bool throwOnNull = false)
-        {
-            var split = fullName.Split('.');
-            if ((split[0] == "get" || split[0] == "set") && filterProp)
-            {
-                var array = new string[split.Length - 1];
-                Array.Copy(split, 1, array, 0, array.Length);
-                split = array;
-            }
-            var paramBraces = (string)null;
-            if (fullName.Contains("("))
-                split = fullName.Replace(paramBraces = fullName.Substring(fullName.IndexOf('(')), "").Split('.');
-            var method = split.Last();
-            var type = fullName.Replace($".{(method.Contains("ctor") ? $".{method}" : method)}{paramBraces}", "");
-            var isParam = false;
-            var parameterTypes = new List<Type>();
-            if (paramBraces != null)
-            {
-                isParam = true;
-                var parametersString = paramBraces.Replace("(", "").Replace(")", "");
-                if (string.IsNullOrWhiteSpace(parametersString))
-                    goto Skip;
-                var parameterSplit = parametersString.Split(',');
-                parameterTypes = parameterSplit.Select(s => AccessTools.TypeByName(s)).ToList();
-            }
-        Skip:
-            var decType = AccessTools.TypeByName(type);
-            if (decType == null && throwOnNull)
-                throw new NullReferenceException($"Cannot Find Type! ({type})");
-            var parameterArr = parameterTypes.ToArray();
-            var result = (MethodBase)null;
-            if (methodType != GSCS.None)
-            {
-                var prop = decType.GetProperty(method, (BindingFlags)15420);
-                switch (methodType)
-                {
-                    case GSCS.Getter:
-                        result = prop.GetGetMethod(true);
-                        break;
-                    case GSCS.Setter:
-                        result = prop.GetSetMethod(true);
-                        break;
-                }
-            }
-            else
-            {
-                if (method == "ctor")
-                    result = decType.GetConstructor((BindingFlags)15420, null, parameterArr, null);
-                else if (method == "cctor")
-                    result = decType.TypeInitializer;
-                else
-                    result = isParam ? decType.GetMethod(method, (BindingFlags)15420, null, parameterTypes.ToArray(), null) : decType.GetMethod(method, (BindingFlags)15420);
-            }
-            if (result == null && throwOnNull)
-                throw new NullReferenceException($"Cannot Find Method! ({method})");
-            return result;
-        }
     }
     [AttributeUsage(AttributeTargets.Class, Inherited = false)]
     public class TweakAttribute : Attribute
@@ -657,14 +562,6 @@ namespace Tweaks
                     else prop.SetValue(instance, Tweak.Tweaks[prop.PropertyType]);
             }
         }
-    }
-    public enum GSCS
-    {
-        None,
-        Getter,
-        Setter,
-        Constructor,
-        StaticConstructor
     }
     #endregion
 }
